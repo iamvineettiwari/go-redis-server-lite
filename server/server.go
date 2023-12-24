@@ -92,13 +92,39 @@ func (s *RedisServer) read(conn net.Conn) {
 }
 
 func (s *RedisServer) handleRequest(conn net.Conn, request any, requestType string) {
+	command, args, err := parseAndGetRequestData(request, requestType)
+
+	if err != nil {
+		errorHelper(err, conn)
+		return
+	}
+
+	commandStr := strings.ToUpper(command.(string))
+
+	handlerFunc, handlerRegistered := s.handlers.ResolveHandler(commandStr)
+
+	if !handlerRegistered {
+		errorHelper(errors.New("Invalid operation"), conn)
+		return
+	}
+
+	response, err := handlerFunc(args...)
+
+	if err != nil {
+		errorHelper(err, conn)
+		return
+	}
+
+	conn.Write(response)
+}
+
+func parseAndGetRequestData(request any, requestType string) (any, []any, error) {
 	switch requestType {
 	case resp.ARRAY:
 		items := request.([]resp.ArrayType)
 
 		if len(items) < 1 {
-			errorHelper(errors.New("Invalid operations"), conn)
-			return
+			return nil, nil, errors.New("Invalid operations")
 		}
 
 		command := items[0].Value.(string)
@@ -108,25 +134,10 @@ func (s *RedisServer) handleRequest(conn net.Conn, request any, requestType stri
 			args = append(args, argItem.Value)
 		}
 
-		handlerFunc, handlerRegistered := s.handlers.ResolveHandler(strings.ToUpper(command))
-
-		if !handlerRegistered {
-			errorHelper(errors.New("Invalid operation"), conn)
-			return
-		}
-
-		response, err := handlerFunc(args...)
-
-		if err != nil {
-			errorHelper(err, conn)
-			return
-		}
-
-		conn.Write(response)
-
-	default:
-		errorHelper(errors.New("Operation not supported"), conn)
+		return command, args, nil
 	}
+
+	return nil, nil, errors.New("Operation not supported")
 }
 
 func errorHelper(err error, conn net.Conn) {
