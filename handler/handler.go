@@ -81,3 +81,70 @@ func (h *Handler) Echo(args ...any) ([]byte, error) {
 
 	return data, err
 }
+
+func (h *Handler) Exists(args ...any) ([]byte, error) {
+	if len(args) < 1 {
+		return nil, errors.New("Invalid Operation")
+	}
+
+	totalFound := 0
+
+	for _, key := range args {
+		if h.store.Exists(key.(string)) {
+			totalFound++
+		}
+	}
+
+	data, err := resp.Serialize(resp.INTEGER, totalFound)
+
+	return data, err
+}
+
+func (h *Handler) Delete(args ...any) ([]byte, error) {
+	if len(args) < 1 {
+		return nil, errors.New("Invalid operation")
+	}
+
+	totalDeleted := 0
+
+	for _, key := range args {
+		if h.store.Delete(key.(string)) {
+			totalDeleted++
+		}
+	}
+
+	data, err := resp.Serialize(resp.INTEGER, totalDeleted)
+	return data, err
+}
+
+func (h *Handler) Incr(args ...any) ([]byte, error) {
+	if len(args) != 1 {
+		return nil, errors.New("Invalid operation")
+	}
+
+	increment, err := h.store.Incr(args[0].(string))
+
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := resp.Serialize(resp.INTEGER, increment)
+
+	return data, err
+}
+
+func (h *Handler) Decr(args ...any) ([]byte, error) {
+	if len(args) != 1 {
+		return nil, errors.New("Invalid operation")
+	}
+
+	increment, err := h.store.Decr(args[0].(string))
+
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := resp.Serialize(resp.INTEGER, increment)
+
+	return data, err
+}
