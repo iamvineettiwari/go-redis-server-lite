@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/iamvineettiwari/go-redis-server-lite/data/list"
 	"github.com/iamvineettiwari/go-redis-server-lite/resp"
 )
 
@@ -51,7 +52,7 @@ func (s *Store) Get(key string) (interface{}, bool, error) {
 		return data, found, nil
 	}
 
-	_, dataIsOfListType := data.([]resp.ArrayType)
+	_, dataIsOfListType := data.(*list.List)
 
 	if dataIsOfListType {
 		return nil, found, errors.New("WRONGTYPE Operation against a key holding the wrong kind of value")
@@ -166,11 +167,13 @@ func (s *Store) LRange(key string, start, end int) (interface{}, error) {
 		return []resp.ArrayType{}, nil
 	}
 
-	value, isArrayType := data.([]resp.ArrayType)
+	list, isListType := data.(*list.List)
 
-	if !isArrayType {
+	if !isListType {
 		return nil, errors.New("WRONGTYPE Operation against a key holding the wrong kind of value")
 	}
+
+	value := list.GetValues()
 
 	end = min(len(value), end+1)
 
@@ -188,13 +191,13 @@ func (s *Store) Lpush(key string, val ...interface{}) (interface{}, error) {
 
 	data, found := s.setLockAndGet(key)
 
-	var existList []resp.ArrayType
+	var existList *list.List
 	var typeMatch bool
 
 	if !found {
-		existList = []resp.ArrayType{}
+		existList = list.NewList()
 	} else {
-		existList, typeMatch = data.([]resp.ArrayType)
+		existList, typeMatch = data.(*list.List)
 
 		if !typeMatch {
 			return nil, errors.New("WRONGTYPE Operation against a key holding the wrong kind of value")
@@ -202,14 +205,11 @@ func (s *Store) Lpush(key string, val ...interface{}) (interface{}, error) {
 	}
 
 	for _, item := range val {
-		existList = append(existList, resp.ArrayType{
-			Value: item,
-			Type:  resp.BULK_STRING,
-		})
+		existList.InsertLast(item, resp.BULK_STRING)
 	}
 
 	s.setWithLock(key, existList)
-	return existList, nil
+	return existList.GetValues(), nil
 }
 
 func (s *Store) Rpush(key string, val ...interface{}) (interface{}, error) {
@@ -223,13 +223,13 @@ func (s *Store) Rpush(key string, val ...interface{}) (interface{}, error) {
 
 	data, found := s.setLockAndGet(key)
 
-	var existList []resp.ArrayType
+	var existList *list.List
 	var typeMatch bool
 
 	if !found {
-		existList = []resp.ArrayType{}
+		existList = list.NewList()
 	} else {
-		existList, typeMatch = data.([]resp.ArrayType)
+		existList, typeMatch = data.(*list.List)
 
 		if !typeMatch {
 			return nil, errors.New("WRONGTYPE Operation against a key holding the wrong kind of value")
@@ -237,13 +237,11 @@ func (s *Store) Rpush(key string, val ...interface{}) (interface{}, error) {
 	}
 
 	for _, item := range val {
-		existList = append([]resp.ArrayType{
-			{Value: item, Type: resp.BULK_STRING},
-		}, existList...)
+		existList.InsertFirst(item, resp.BULK_STRING)
 	}
 
 	s.setWithLock(key, existList)
-	return existList, nil
+	return existList.GetValues(), nil
 }
 
 func (s *Store) setLockAndGet(key string) (data interface{}, found bool) {
