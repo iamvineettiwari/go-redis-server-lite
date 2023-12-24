@@ -17,6 +17,9 @@ func main() {
 	handler.AddHandler("DEL", handler.Delete)
 	handler.AddHandler("INCR", handler.Incr)
 	handler.AddHandler("DECR", handler.Decr)
+	handler.AddHandler("LRANGE", handler.LRange)
+	handler.AddHandler("LPUSH", handler.Lpush)
+	handler.AddHandler("RPUSH", handler.Rpush)
 
 	redisServer.Start()
 }

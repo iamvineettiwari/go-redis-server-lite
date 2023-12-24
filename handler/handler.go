@@ -2,6 +2,8 @@ package handler
 
 import (
 	"errors"
+	"fmt"
+	"strconv"
 
 	"github.com/iamvineettiwari/go-redis-server-lite/data"
 	"github.com/iamvineettiwari/go-redis-server-lite/resp"
@@ -63,7 +65,11 @@ func (h *Handler) Get(args ...any) ([]byte, error) {
 
 	key := args[0].(string)
 
-	value, _ := h.store.Get(key)
+	value, _, err := h.store.Get(key)
+
+	if err != nil {
+		return nil, err
+	}
 
 	data, err := resp.Serialize(resp.BULK_STRING, value)
 
@@ -145,6 +151,73 @@ func (h *Handler) Decr(args ...any) ([]byte, error) {
 	}
 
 	data, err := resp.Serialize(resp.INTEGER, increment)
+
+	return data, err
+}
+
+func (h *Handler) Lpush(args ...any) ([]byte, error) {
+	if len(args) < 2 {
+		return nil, errors.New("Invalid operation")
+	}
+
+	key := args[0].(string)
+	val := args[1:]
+
+	items, err := h.store.Lpush(key, val...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := resp.Serialize(resp.ARRAY, items)
+
+	return data, err
+}
+
+func (h *Handler) Rpush(args ...any) ([]byte, error) {
+	if len(args) < 2 {
+		return nil, errors.New("Invalid operation")
+	}
+
+	key := args[0].(string)
+	val := args[1:]
+
+	items, err := h.store.Rpush(key, val...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := resp.Serialize(resp.ARRAY, items)
+
+	return data, err
+}
+
+func (h *Handler) LRange(args ...any) ([]byte, error) {
+	if len(args) < 3 {
+		return nil, errors.New(fmt.Sprintf("wrong number of arguments (given %d, expected 3)", len(args)))
+	}
+
+	key := args[0].(string)
+	start, err := strconv.Atoi(args[1].(string))
+
+	if err != nil {
+		return nil, errors.New("ERR value is not an integer or out of range")
+	}
+
+	end, err := strconv.Atoi(args[2].(string))
+
+	if err != nil {
+		return nil, errors.New("ERR value is not an integer or out of range")
+	}
+
+	items, err := h.store.LRange(key, start, end)
+
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := resp.Serialize(resp.ARRAY, items)
 
 	return data, err
 }

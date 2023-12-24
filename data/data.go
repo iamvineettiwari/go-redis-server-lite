@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strconv"
 	"sync"
+
+	"github.com/iamvineettiwari/go-redis-server-lite/resp"
 )
 
 type Store struct {
@@ -26,14 +28,24 @@ func (s *Store) Set(key string, value interface{}) {
 	s.setWithLock(key, value)
 }
 
-func (s *Store) Get(key string) (interface{}, bool) {
+func (s *Store) Get(key string) (interface{}, bool, error) {
 	if key == "" {
-		return nil, false
+		return nil, false, nil
 	}
 
 	data, found := s.setLockAndGet(key)
 
-	return data, found
+	if !found {
+		return data, found, nil
+	}
+
+	_, dataIsOfListType := data.([]resp.ArrayType)
+
+	if dataIsOfListType {
+		return nil, found, errors.New("WRONGTYPE Operation against a key holding the wrong kind of value")
+	}
+
+	return data, found, nil
 }
 
 func (s *Store) Exists(key string) bool {
@@ -41,7 +53,7 @@ func (s *Store) Exists(key string) bool {
 		return false
 	}
 
-	_, found := s.Get(key)
+	_, found, _ := s.Get(key)
 
 	return found
 }
@@ -66,7 +78,11 @@ func (s *Store) Incr(key string) (interface{}, error) {
 		return nil, errors.New("Invalid operation")
 	}
 
-	data, exists := s.Get(key)
+	data, exists, err := s.Get(key)
+
+	if err != nil {
+		return nil, err
+	}
 
 	if !exists {
 		data = "1"
@@ -97,7 +113,11 @@ func (s *Store) Decr(key string) (interface{}, error) {
 		return nil, errors.New("Invalid operation")
 	}
 
-	data, exists := s.Get(key)
+	data, exists, err := s.Get(key)
+
+	if err != nil {
+		return nil, err
+	}
 
 	if !exists {
 		data = "-1"
@@ -121,6 +141,97 @@ func (s *Store) Decr(key string) (interface{}, error) {
 
 	s.setWithLock(key, newValue)
 	return newValue, nil
+}
+
+func (s *Store) LRange(key string, start, end int) (interface{}, error) {
+	if key == "" {
+		return nil, errors.New("Invalid Operation")
+	}
+
+	data, found := s.setLockAndGet(key)
+
+	if !found {
+		return []resp.ArrayType{}, nil
+	}
+
+	value, isArrayType := data.([]resp.ArrayType)
+
+	if !isArrayType {
+		return nil, errors.New("WRONGTYPE Operation against a key holding the wrong kind of value")
+	}
+
+	end = min(len(value), end+1)
+
+	return value[start:end], nil
+}
+
+func (s *Store) Lpush(key string, val ...interface{}) (interface{}, error) {
+	if key == "" {
+		return nil, errors.New("Invalid operation")
+	}
+
+	if len(val) < 1 {
+		return nil, errors.New("ERR wrong number of arguments for 'lpush' command")
+	}
+
+	data, found := s.setLockAndGet(key)
+
+	var existList []resp.ArrayType
+	var typeMatch bool
+
+	if !found {
+		existList = []resp.ArrayType{}
+	} else {
+		existList, typeMatch = data.([]resp.ArrayType)
+
+		if !typeMatch {
+			return nil, errors.New("WRONGTYPE Operation against a key holding the wrong kind of value")
+		}
+	}
+
+	for _, item := range val {
+		existList = append(existList, resp.ArrayType{
+			Value: item,
+			Type:  resp.BULK_STRING,
+		})
+	}
+
+	s.setWithLock(key, existList)
+	return existList, nil
+}
+
+func (s *Store) Rpush(key string, val ...interface{}) (interface{}, error) {
+	if key == "" {
+		return nil, errors.New("Invalid operation")
+	}
+
+	if len(val) < 1 {
+		return nil, errors.New("ERR wrong number of arguments for 'rpush' command")
+	}
+
+	data, found := s.setLockAndGet(key)
+
+	var existList []resp.ArrayType
+	var typeMatch bool
+
+	if !found {
+		existList = []resp.ArrayType{}
+	} else {
+		existList, typeMatch = data.([]resp.ArrayType)
+
+		if !typeMatch {
+			return nil, errors.New("WRONGTYPE Operation against a key holding the wrong kind of value")
+		}
+	}
+
+	for _, item := range val {
+		existList = append([]resp.ArrayType{
+			{Value: item, Type: resp.BULK_STRING},
+		}, existList...)
+	}
+
+	s.setWithLock(key, existList)
+	return existList, nil
 }
 
 func (s *Store) setLockAndGet(key string) (data interface{}, found bool) {
