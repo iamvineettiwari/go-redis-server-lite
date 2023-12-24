@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/iamvineettiwari/go-redis-server-lite/data"
 	"github.com/iamvineettiwari/go-redis-server-lite/resp"
@@ -43,15 +44,34 @@ func (h *Handler) Set(args ...any) ([]byte, error) {
 		return nil, errors.New("Invalid operation")
 	}
 
-	key := args[0].(string)
-
-	value := ""
-
-	for _, v := range args[1:] {
-		value += (v.(string))
+	if len(args) > 2 && len(args) < 4 {
+		return nil, errors.New("Invalid operation")
 	}
 
-	h.store.Set(key, value)
+	key := args[0].(string)
+	value := args[1].(string)
+
+	var expireCommand string
+	var expireTime int
+
+	if len(args) > 2 {
+		com := strings.ToUpper(args[2].(string))
+
+		if com != "PX" && com != "EX" {
+			return nil, errors.New("Invalid operation")
+		}
+
+		val, err := strconv.Atoi(args[3].(string))
+
+		if err != nil {
+			return nil, errors.New("ERR invalid expire time")
+		}
+
+		expireTime = val
+		expireCommand = com
+	}
+
+	h.store.Set(key, value, expireCommand, expireTime)
 
 	data, err := resp.Serialize(resp.SIMPLE_STRING, "OK")
 

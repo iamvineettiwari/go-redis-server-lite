@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/iamvineettiwari/go-redis-server-lite/resp"
 )
@@ -20,12 +21,23 @@ func NewStore() *Store {
 	}
 }
 
-func (s *Store) Set(key string, value interface{}) {
+func (s *Store) Set(key string, value interface{}, expireCommand string, expireTime int) {
 	if key == "" {
 		return
 	}
 
 	s.setWithLock(key, value)
+
+	if expireCommand != "" && expireTime != 0 {
+		timeDuration := s.getTimeDuration(expireCommand, expireTime)
+
+		if timeDuration != time.Duration(0) {
+			go func() {
+				<-time.After(timeDuration)
+				s.deleteWithLock(key)
+			}()
+		}
+	}
 }
 
 func (s *Store) Get(key string) (interface{}, bool, error) {
@@ -251,4 +263,14 @@ func (s *Store) deleteWithLock(key string) {
 	s.wl.Lock()
 	defer s.wl.Unlock()
 	delete(s.data, key)
+}
+
+func (s *Store) getTimeDuration(expireCommand string, timeValue int) time.Duration {
+	if expireCommand == "PX" {
+		return time.Millisecond * time.Duration(timeValue)
+	} else if expireCommand == "EX" {
+		return time.Second * time.Duration(timeValue)
+	}
+
+	return time.Duration(0)
 }
